@@ -1,4 +1,4 @@
-module Main exposing (..)
+port module Main exposing (..)
 
 import Browser
 import Html exposing (..)
@@ -22,14 +22,16 @@ type alias TodoItem =
   , editing : Bool
   }
 
-init : ( Model, Cmd Msg )
-init =
-  ( { displayMain = True
-    , newTodoText = ""
-    , todoList = []
-    }
-  , Cmd.none
-  )
+init : Maybe Model -> ( Model, Cmd Msg )
+init maybeModel =
+    ( Maybe.withDefault
+        { displayMain = True
+        , newTodoText = ""
+        , todoList = []
+        }
+        maybeModel
+    , Cmd.none
+    )
 
 ---- UPDATE ----
 
@@ -45,7 +47,7 @@ type Msg
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-  case Debug.log "MESSAGE: " msg of
+  case msg of
     NoOp ->
       ( model, Cmd.none )
 
@@ -198,15 +200,26 @@ viewTodoItem toggleItem deleteItem editItem todo =
 
 ---- PROGRAM ----
 
-main : Program () Model Msg
+main : Program (Maybe Model) Model Msg
 main =
-    Browser.element
-        { view = view
-        , init = \_ -> init
-        , update = update
+    Browser.document
+        { view = \model -> { title = "Elm • TodoMVC", body = [view model] }
+        , init = init
+        , update = updateWithStorage
         , subscriptions = always Sub.none
         }
 
+port setStorage : Model -> Cmd msg
+
+updateWithStorage : Msg -> Model -> ( Model, Cmd Msg )
+updateWithStorage msg model =
+  let
+    (newModel, cmds) =
+      update msg model
+  in
+    ( newModel
+    , Cmd.batch [ setStorage newModel, cmds ]
+    )
 
 ---- UTILITIES ----
 
