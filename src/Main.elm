@@ -1,50 +1,49 @@
 module Main exposing (..)
 
 import Browser
-import Browser.Events exposing (onKeyDown)
 import Html exposing (..)
 import Html.Attributes exposing (..)
-import Html.Events exposing (onClick)
-import Html.Events exposing (onInput)
-import Html.Events exposing (on, keyCode)
+import Html.Events exposing (onClick, onDoubleClick, onInput, on, keyCode)
 import Json.Decode as Decode
-
 
 ---- MODEL ----
 
-
 type alias Model =
   { displayMain : Bool
-  , newTodo : String
-  , oldTodo : List TodoItem
+  , newTodoText : String
+  , editing : Bool
+  , oldTodo : TodoList
   }
+
+type alias TodoList = List (TodoItem)
 
 type alias TodoItem =
   { description : String
   , completed : Bool
+  , editing : Bool
   }
 
 init : ( Model, Cmd Msg )
 init =
   ( { displayMain = True
-    , newTodo = ""
+    , newTodoText = ""
+    , editing = False
     , oldTodo = []
     }
   , Cmd.none
   )
 
-
-
 ---- UPDATE ----
-
 
 type Msg
   = NoOp
   | ToggleMain
   | ToggleItem TodoItem
+  | DeleteItem TodoItem
+  | EditItem TodoItem
+  | EditItemText TodoItem Bool String
   | ChangeNewTodo String
   | SubmitNewTodo
-
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -56,29 +55,47 @@ update msg model =
       ( { model | displayMain = not model.displayMain }, Cmd.none )
 
     ToggleItem todo ->
-      ( { model | oldTodo = toggleTodoItem { todo | completed = not todo.completed } model.oldTodo }, Cmd.none )
+      ( { model | oldTodo = replaceTodoItem todo { todo | completed = not todo.completed } model.oldTodo }, Cmd.none )
+
+    DeleteItem todo ->
+      ( { model | oldTodo = deleteTodoItem todo model.oldTodo }, Cmd.none )
+
+    EditItem todo ->
+      ( { model | oldTodo = replaceTodoItem todo { todo | editing = not todo.editing } model.oldTodo }, Cmd.none )
+
+    EditItemText todo continueEditing desc ->
+      let
+        newTodo = { todo | description = desc, editing = continueEditing }
+      in
+        ( { model | oldTodo = replaceTodoItem todo newTodo model.oldTodo }, Cmd.none )
 
     ChangeNewTodo newTodo ->
-      ( { model | newTodo = newTodo }, Cmd.none )
+      ( { model | newTodoText = newTodo }, Cmd.none )
 
     SubmitNewTodo ->
-      ( { model | oldTodo = model.oldTodo ++ [ TodoItem model.newTodo False ], newTodo = "" }, Cmd.none )
+      ( { model | oldTodo = model.oldTodo ++ [ TodoItem model.newTodoText False False ], newTodoText = "" }, Cmd.none )
 
-
-toggleTodoItem : TodoItem -> List (TodoItem) -> List (TodoItem)
-toggleTodoItem todo list =
+replaceTodoItem : TodoItem -> TodoItem -> TodoList -> TodoList
+replaceTodoItem todo withTodo list =
   let
     replace : TodoItem -> TodoItem -> TodoItem
     replace todo1 todo2 =
       if todo1.description == todo2.description then
-        todo1
+        withTodo
       else
         todo2
   in
     List.map (replace todo) list
 
----- VIEW ----
+deleteTodoItem : TodoItem -> TodoList -> TodoList
+deleteTodoItem todo list =
+  let
+    remove todo1 =
+      not (todo1.description == todo.description)
+  in
+    List.filter remove list
 
+---- VIEW ----
 
 view : Model -> Html Msg
 view model =
@@ -89,7 +106,7 @@ view model =
             [ class "new-todo"
             , placeholder "What needs to be done?"
             , autofocus True
-            , value model.newTodo
+            , value model.newTodoText
             , onInput ChangeNewTodo
             , onEnter SubmitNewTodo
         ] []
@@ -102,7 +119,7 @@ view model =
             , ("hidden", model.displayMain)
             ]
         ]
-        [ ul [ class "todo-list" ] ( todoList model.oldTodo )
+        [ ul [ class "todo-list" ] ( viewTodoList model.oldTodo )
         , footer [ class "footer" ]
             [ span [ class "todo-count" ] [ strong [] [ text "0" ], text " item left" ]
             , ul [ class "filters" ]
@@ -121,6 +138,65 @@ view model =
         ]
     ]
 
+viewTodoList : TodoList -> List (Html Msg)
+viewTodoList todos =
+  List.map
+    (viewTodoItem
+      (\todo -> ToggleItem todo)
+      (\todo -> DeleteItem todo)
+      (\todo ->  EditItem todo)
+    )
+    todos
+
+viewTodoItem : (TodoItem -> Msg) -> (TodoItem -> Msg) -> (TodoItem -> Msg) -> TodoItem -> Html Msg
+viewTodoItem toggleItem deleteItem editItem todo =
+  let
+    desc = todo.description
+    handleDoubleClick = if not todo.editing then (editItem todo) else NoOp
+  in
+    li
+      [ classList
+        [ ( "completed", todo.completed )
+        , ( "editing", todo.editing)
+        ]
+      , onDoubleClick handleDoubleClick
+      ]
+      [ div
+          [ class "view" ]
+          [ input
+              [ class "toggle"
+              , type_ "checkbox"
+              , checked todo.completed
+              , onClick (toggleItem todo)
+              ] []
+          , label [] [text todo.description ]
+          , button
+              [ class "destroy"
+              , onClick (deleteItem todo)
+              ] []
+          ]
+      , input
+          [ class "edit"
+          , value desc
+          , onInput (EditItemText todo True)
+          , onEnter (EditItemText todo False desc)
+          ] []
+      ]
+
+---- PROGRAM ----
+
+main : Program () Model Msg
+main =
+    Browser.element
+        { view = view
+        , init = \_ -> init
+        , update = update
+        , subscriptions = always Sub.none
+        }
+
+
+---- UTILITIES ----
+
 onEnter : Msg -> Attribute Msg
 onEnter msg =
   let
@@ -131,43 +207,3 @@ onEnter msg =
         Decode.fail "not ENTER"
   in
     on "keydown" (Decode.andThen isEnter keyCode)
-
-
-
-todoList : List (TodoItem) -> List (Html Msg)
-todoList todos =
-  List.map todoListItem todos
-
-todoListItem : TodoItem -> Html Msg
-todoListItem todo =
-  li
-    [ classList
-        [ ( "completed", todo.completed ) ]
-    ]
-    [ div
-        [ class "view" ]
-        [ input
-            [ class "toggle"
-            , type_ "checkbox"
-            , checked todo.completed
-            , onClick (ToggleItem todo)
-            ] []
-        , label [] [text todo.description ]
-        , button [ class "destroy" ] []
-        ]
-    , input [ class "edit", value todo.description ] []
-    ]
-
-
-
----- PROGRAM ----
-
-
-main : Program () Model Msg
-main =
-    Browser.element
-        { view = view
-        , init = \_ -> init
-        , update = update
-        , subscriptions = always Sub.none
-        }
