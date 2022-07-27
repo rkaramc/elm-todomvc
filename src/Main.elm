@@ -11,8 +11,7 @@ import Json.Decode as Decode
 type alias Model =
   { displayMain : Bool
   , newTodoText : String
-  , editing : Bool
-  , oldTodo : TodoList
+  , todoList : TodoList
   }
 
 type alias TodoList = List (TodoItem)
@@ -27,8 +26,7 @@ init : ( Model, Cmd Msg )
 init =
   ( { displayMain = True
     , newTodoText = ""
-    , editing = False
-    , oldTodo = []
+    , todoList = []
     }
   , Cmd.none
   )
@@ -55,25 +53,40 @@ update msg model =
       ( { model | displayMain = not model.displayMain }, Cmd.none )
 
     ToggleItem todo ->
-      ( { model | oldTodo = replaceTodoItem todo { todo | completed = not todo.completed } model.oldTodo }, Cmd.none )
+      ( { model | todoList =
+                    replaceTodoItem
+                      todo { todo | completed = not todo.completed }
+                      model.todoList
+        }
+        , Cmd.none
+      )
 
     DeleteItem todo ->
-      ( { model | oldTodo = deleteTodoItem todo model.oldTodo }, Cmd.none )
+      ( { model | todoList = deleteTodoItem todo model.todoList }, Cmd.none )
 
     EditItem todo ->
-      ( { model | oldTodo = replaceTodoItem todo { todo | editing = not todo.editing } model.oldTodo }, Cmd.none )
+      ( { model | todoList =
+                    replaceTodoItem
+                      todo { todo | editing = not todo.editing }
+                      model.todoList
+        }
+        , Cmd.none
+      )
 
     EditItemText todo continueEditing desc ->
-      let
-        newTodo = { todo | description = desc, editing = continueEditing }
-      in
-        ( { model | oldTodo = replaceTodoItem todo newTodo model.oldTodo }, Cmd.none )
+      ( { model | todoList =
+                    replaceTodoItem
+                      todo { todo | description = desc, editing = continueEditing }
+                      model.todoList
+        }
+        , Cmd.none
+      )
 
     ChangeNewTodo newTodo ->
       ( { model | newTodoText = newTodo }, Cmd.none )
 
     SubmitNewTodo ->
-      ( { model | oldTodo = model.oldTodo ++ [ TodoItem model.newTodoText False False ], newTodoText = "" }, Cmd.none )
+      ( { model | todoList = model.todoList ++ [ TodoItem model.newTodoText False False ], newTodoText = "" }, Cmd.none )
 
 replaceTodoItem : TodoItem -> TodoItem -> TodoList -> TodoList
 replaceTodoItem todo withTodo list =
@@ -101,41 +114,41 @@ view : Model -> Html Msg
 view model =
   section [ class "todoapp"]
     [ header [ class "header "]
-        [ h1 [] [ text "todos" ]
-        , input
-            [ class "new-todo"
-            , placeholder "What needs to be done?"
-            , autofocus True
-            , value model.newTodoText
-            , onInput ChangeNewTodo
-            , onEnter SubmitNewTodo
+      [ h1 [] [ text "todos" ]
+      , input
+        [ class "new-todo"
+        , placeholder "What needs to be done?"
+        , autofocus True
+        , value model.newTodoText
+        , onInput ChangeNewTodo
+        , onEnter SubmitNewTodo
         ] []
-        , input [ class "toggle-all", id "toggle-all", type_ "checkbox", onClick ToggleMain ] []
-        , label [ for "toggle-all"] [ text "Toggle display of all Todos" ]
-        ]
+      , input [ class "toggle-all", id "toggle-all", type_ "checkbox", onClick ToggleMain ] []
+      , label [ for "toggle-all"] [ text "Toggle display of all Todos" ]
+      ]
     , section
-        [ classList
-            [ ("main", True)
-            , ("hidden", model.displayMain)
-            ]
+      [ classList
+        [ ("main", True)
+        , ("hidden", model.displayMain)
         ]
-        [ ul [ class "todo-list" ] ( viewTodoList model.oldTodo )
-        , footer [ class "footer" ]
-            [ span [ class "todo-count" ] [ strong [] [ text "0" ], text " item left" ]
-            , ul [ class "filters" ]
-                [ li [] [ a [ class "selected", href "#/" ] [ text "All" ] ]
-                , li [] [ a [ href "#/active" ] [ text "Active" ] ]
-                , li [] [ a [ href "#/completed" ] [ text "Completed" ] ]
-                ]
-            , button [ class "clear-completed" ] [ text "Clear completed" ]
-            ]
-        , footer [ class "info" ]
-            [ p [] [ text "Double-click to edit a todo" ]
-            , p [] [ text "Template by ", a [ href "http://sindresorhus.com" ] [ text "Sindre Sorhus" ]]
-            , p [] [ text "Created by ", a [ href "http://karamch.com/about" ] [ text "Rajeev K" ]]
-            , p [] [ text "Part of ", a [ href "http://todomvc.com" ] [ text "TodoMVC" ]]
-            ]
+      ]
+      [ ul [ class "todo-list" ] ( viewTodoList model.todoList )
+      , footer [ class "footer" ]
+        [ span [ class "todo-count" ] [ strong [] [ text "0" ], text " item left" ]
+        , ul [ class "filters" ]
+          [ li [] [ a [ class "selected", href "#/" ] [ text "All" ] ]
+          , li [] [ a [ href "#/active" ] [ text "Active" ] ]
+          , li [] [ a [ href "#/completed" ] [ text "Completed" ] ]
+          ]
+        , button [ class "clear-completed" ] [ text "Clear completed" ]
         ]
+      , footer [ class "info" ]
+        [ p [] [ text "Double-click to edit a todo" ]
+        , p [] [ text "Template by ", a [ href "http://sindresorhus.com" ] [ text "Sindre Sorhus" ]]
+        , p [] [ text "Created by ", a [ href "http://karamch.com/about" ] [ text "Rajeev K" ]]
+        , p [] [ text "Part of ", a [ href "http://todomvc.com" ] [ text "TodoMVC" ]]
+        ]
+      ]
     ]
 
 viewTodoList : TodoList -> List (Html Msg)
@@ -162,25 +175,25 @@ viewTodoItem toggleItem deleteItem editItem todo =
       , onDoubleClick handleDoubleClick
       ]
       [ div
-          [ class "view" ]
-          [ input
-              [ class "toggle"
-              , type_ "checkbox"
-              , checked todo.completed
-              , onClick (toggleItem todo)
-              ] []
-          , label [] [text todo.description ]
-          , button
-              [ class "destroy"
-              , onClick (deleteItem todo)
-              ] []
-          ]
-      , input
-          [ class "edit"
-          , value desc
-          , onInput (EditItemText todo True)
-          , onEnter (EditItemText todo False desc)
+        [ class "view" ]
+        [ input
+          [ class "toggle"
+          , type_ "checkbox"
+          , checked todo.completed
+          , onClick (toggleItem todo)
           ] []
+        , label [] [text todo.description ]
+        , button
+          [ class "destroy"
+          , onClick (deleteItem todo)
+          ] []
+        ]
+      , input
+        [ class "edit"
+        , value desc
+        , onInput (EditItemText todo True)
+        , onEnter (EditItemText todo False desc)
+        ] []
       ]
 
 ---- PROGRAM ----
