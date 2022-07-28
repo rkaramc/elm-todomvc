@@ -135,22 +135,32 @@ view model =
         ]
       ]
       [ ul [ class "todo-list" ] ( viewTodoList model.todoList )
+      , viewFooterActions (List.length model.todoList)
+      , viewFooterInfo
+      ]
+    ]
+
+
+viewFooterActions : Int -> Html Msg
+viewFooterActions itemCount =
       , footer [ class "footer" ]
         [ span [ class "todo-count" ] [ strong [] [ text "0" ], text " item left" ]
-        , ul [ class "filters" ]
-          [ li [] [ a [ class "selected", href "#/" ] [ text "All" ] ]
-          , li [] [ a [ href "#/active" ] [ text "Active" ] ]
-          , li [] [ a [ href "#/completed" ] [ text "Completed" ] ]
-          ]
-        , button [ class "clear-completed" ] [ text "Clear completed" ]
-        ]
-      , footer [ class "info" ]
-        [ p [] [ text "Double-click to edit a todo" ]
-        , p [] [ text "Template by ", a [ href "http://sindresorhus.com" ] [ text "Sindre Sorhus" ]]
-        , p [] [ text "Created by ", a [ href "http://karamch.com/about" ] [ text "Rajeev K" ]]
-        , p [] [ text "Part of ", a [ href "http://todomvc.com" ] [ text "TodoMVC" ]]
-        ]
+    , ul [ class "filters" ]
+      [ li [] [ a [ class "selected", href "#/" ] [ text "All" ] ]
+      , li [] [ a [ href "#/active" ] [ text "Active" ] ]
+      , li [] [ a [ href "#/completed" ] [ text "Completed" ] ]
       ]
+    , button [ class "clear-completed" ] [ text "Clear completed" ]
+    ]
+
+
+viewFooterInfo : Html Msg
+viewFooterInfo =
+    footer [ class "info" ]
+    [ p [] [ text "Double-click to edit a todo" ]
+    , p [] [ text "Template by ", a [ href "http://sindresorhus.com" ] [ text "Sindre Sorhus" ]]
+    , p [] [ text "Created by ", a [ href "http://karamch.com/about" ] [ text "Rajeev K" ]]
+    , p [] [ text "Part of ", a [ href "http://todomvc.com" ] [ text "TodoMVC" ]]
     ]
 
 viewTodoList : TodoList -> List (Html Msg)
