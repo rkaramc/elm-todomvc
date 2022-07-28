@@ -143,8 +143,11 @@ view model =
 
 viewFooterActions : Int -> Html Msg
 viewFooterActions itemCount =
-      , footer [ class "footer" ]
-        [ span [ class "todo-count" ] [ strong [] [ text "0" ], text " item left" ]
+  let
+    textCount = String.fromInt itemCount ++ if itemCount /= 1 then " items left" else " item left"
+  in
+    footer [ class "footer" ]
+    [ span [ class "todo-count" ] [ strong [] [ text textCount ] ]
     , ul [ class "filters" ]
       [ li [] [ a [ class "selected", href "#/" ] [ text "All" ] ]
       , li [] [ a [ href "#/active" ] [ text "Active" ] ]
