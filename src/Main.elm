@@ -3,8 +3,9 @@ port module Main exposing (..)
 import Browser
 import Html exposing (..)
 import Html.Attributes exposing (..)
-import Html.Events exposing (keyCode, on, onClick, onDoubleClick, onInput)
-import Json.Decode as Decode
+import Html.Events exposing (keyCode, on, onBlur, onClick, onDoubleClick, onInput)
+import Json.Decode as Decode exposing (Decoder, andThen, bool, field, string, succeed)
+import Json.Decode.Extra as Decode exposing (..)
 
 
 
@@ -15,6 +16,7 @@ type alias Model =
     { displayMain : Bool
     , newTodoText : String
     , todoList : TodoList
+    , visibility : String
     }
 
 
@@ -29,20 +31,37 @@ type alias TodoItem =
     }
 
 
-init : Maybe Model -> ( Model, Cmd Msg )
-init maybeModel =
-    ( Maybe.withDefault
-        { displayMain = True
-        , newTodoText = ""
-        , todoList = []
-        }
-        maybeModel
-    , Cmd.none
-    )
+todoItemDecoder : Decoder TodoItem
+todoItemDecoder =
+    succeed TodoItem
+        |> andMap (field "description" string)
+        |> andMap (field "completed" bool)
+        |> andMap (field "editing" bool)
 
 
+todoListDecoder : Decoder TodoList
+todoListDecoder =
+    Decode.list
+        todoItemDecoder
 
----- UPDATE ----
+
+modelDecoder : Decoder Model
+modelDecoder =
+    succeed Model
+        |> andMap (field "displayMain" bool |> withDefault True)
+        |> andMap (field "newTodoText" string |> withDefault "")
+        |> andMap (field "todoList" todoListDecoder |> withDefault [])
+        |> andMap (field "visibility" string |> withDefault "")
+
+
+init : Decode.Value -> ( Model, Cmd Msg )
+init flags =
+    case Decode.decodeValue modelDecoder flags of
+        Err _ ->
+            Debug.todo "unable to decode model from localstorage!"
+
+        Ok model ->
+            ( model, Cmd.none )
 
 
 type Msg
@@ -155,7 +174,7 @@ view model =
         , section
             [ classList
                 [ ( "main", True )
-                , ( "hidden", model.displayMain )
+                , ( "hidden", not model.displayMain )
                 ]
             ]
             [ ul [ class "todo-list" ] (viewTodoList model.todoList)
@@ -250,6 +269,7 @@ viewTodoItem toggleItem deleteItem editItem todo =
             , value desc
             , onInput (EditItemText todo True)
             , onEnter (EditItemText todo False desc)
+            , onBlur (EditItemText todo False desc)
             ]
             []
         ]
@@ -259,7 +279,7 @@ viewTodoItem toggleItem deleteItem editItem todo =
 ---- PROGRAM ----
 
 
-main : Program (Maybe Model) Model Msg
+main : Program Decode.Value Model Msg
 main =
     Browser.document
         { view = \model -> { title = "Elm • TodoMVC", body = [ view model ] }
