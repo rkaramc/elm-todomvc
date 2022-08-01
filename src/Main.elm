@@ -4,54 +4,8 @@ import Browser
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (keyCode, on, onBlur, onClick, onDoubleClick, onInput)
-import Json.Decode as Decode exposing (Decoder, andThen, bool, field, string, succeed)
-import Json.Decode.Extra as Decode exposing (..)
-
-
-
----- MODEL ----
-
-
-type alias Model =
-    { displayMain : Bool
-    , newTodoText : String
-    , todoList : TodoList
-    , visibility : String
-    }
-
-
-type alias TodoList =
-    List TodoItem
-
-
-type alias TodoItem =
-    { description : String
-    , completed : Bool
-    , editing : Bool
-    }
-
-
-todoItemDecoder : Decoder TodoItem
-todoItemDecoder =
-    succeed TodoItem
-        |> andMap (field "description" string)
-        |> andMap (field "completed" bool)
-        |> andMap (field "editing" bool)
-
-
-todoListDecoder : Decoder TodoList
-todoListDecoder =
-    Decode.list
-        todoItemDecoder
-
-
-modelDecoder : Decoder Model
-modelDecoder =
-    succeed Model
-        |> andMap (field "displayMain" bool |> withDefault True)
-        |> andMap (field "newTodoText" string |> withDefault "")
-        |> andMap (field "todoList" todoListDecoder |> withDefault [])
-        |> andMap (field "visibility" string |> withDefault "")
+import Json.Decode as Decode
+import Model exposing (Model, TodoItem, TodoList, modelDecoder)
 
 
 init : Decode.Value -> ( Model, Cmd Msg )
