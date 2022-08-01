@@ -25,8 +25,10 @@ type Msg
     | DeleteItem TodoItem
     | EditItem TodoItem
     | EditItemText TodoItem Bool String
-    | ChangeNewTodo String
+    | ChangeNewTodoText String
     | SubmitNewTodo
+    | SetVisibility String
+    | ClearCompleted
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -36,29 +38,67 @@ update msg model =
             ( model, Cmd.none )
 
         ToggleMain ->
-            ( { model | displayMain = not model.displayMain }, Cmd.none )
-
-        ToggleItem todo ->
             ( { model
-                | todoList =
-                    replaceTodoItem
-                        todo
-                        { todo | completed = not todo.completed }
-                        model.todoList
+                | displayMain =
+                    not model.displayMain
               }
             , Cmd.none
             )
 
-        DeleteItem todo ->
-            ( { model | todoList = deleteTodoItem todo model.todoList }, Cmd.none )
+        SetVisibility visibility ->
+            ( { model
+                | visibility =
+                    visibility
+              }
+            , Cmd.none
+            )
+
+        ChangeNewTodoText newTodoText ->
+            ( { model
+                | newTodoText =
+                    newTodoText
+              }
+            , Cmd.none
+            )
+
+        SubmitNewTodo ->
+            ( { model
+                | todoList =
+                    model.todoList ++ [ TodoItem model.newTodoText False False ]
+                , newTodoText =
+                    ""
+              }
+            , Cmd.none
+            )
+
+        ToggleItem todo ->
+            ( { model
+                | todoList =
+                    model.todoList
+                        |> List.map
+                            (\a ->
+                                if todo.description == a.description then
+                                    { todo | completed = not todo.completed }
+
+                                else
+                                    a
+                            )
+              }
+            , Cmd.none
+            )
 
         EditItem todo ->
             ( { model
                 | todoList =
-                    replaceTodoItem
-                        todo
-                        { todo | editing = not todo.editing }
-                        model.todoList
+                    model.todoList
+                        |> List.map
+                            (\a ->
+                                if todo.description == a.description then
+                                    { todo | editing = not todo.editing }
+
+                                else
+                                    a
+                            )
               }
             , Cmd.none
             )
@@ -66,42 +106,36 @@ update msg model =
         EditItemText todo continueEditing desc ->
             ( { model
                 | todoList =
-                    replaceTodoItem
-                        todo
-                        { todo | description = desc, editing = continueEditing }
-                        model.todoList
+                    model.todoList
+                        |> List.map
+                            (\a ->
+                                if todo.description == a.description then
+                                    { todo | description = desc, editing = continueEditing }
+
+                                else
+                                    a
+                            )
               }
             , Cmd.none
             )
 
-        ChangeNewTodo newTodo ->
-            ( { model | newTodoText = newTodo }, Cmd.none )
+        DeleteItem todo ->
+            ( { model
+                | todoList =
+                    model.todoList
+                        |> List.filter (\a -> a.description /= todo.description)
+              }
+            , Cmd.none
+            )
 
-        SubmitNewTodo ->
-            ( { model | todoList = model.todoList ++ [ TodoItem model.newTodoText False False ], newTodoText = "" }, Cmd.none )
-
-
-replaceTodoItem : TodoItem -> TodoItem -> TodoList -> TodoList
-replaceTodoItem todo withTodo list =
-    let
-        replace : TodoItem -> TodoItem -> TodoItem
-        replace todo1 todo2 =
-            if todo1.description == todo2.description then
-                withTodo
-
-            else
-                todo2
-    in
-    List.map (replace todo) list
-
-
-deleteTodoItem : TodoItem -> TodoList -> TodoList
-deleteTodoItem todo list =
-    let
-        remove todo1 =
-            not (todo1.description == todo.description)
-    in
-    List.filter remove list
+        ClearCompleted ->
+            ( { model
+                | todoList =
+                    model.todoList
+                        |> List.filter (\a -> not a.completed)
+              }
+            , Cmd.none
+            )
 
 
 
@@ -118,7 +152,7 @@ view model =
                 , placeholder "What needs to be done?"
                 , autofocus True
                 , value model.newTodoText
-                , onInput ChangeNewTodo
+                , onInput ChangeNewTodoText
                 , onEnter SubmitNewTodo
                 ]
                 []
@@ -131,33 +165,42 @@ view model =
                 , ( "hidden", not model.displayMain )
                 ]
             ]
-            [ ul [ class "todo-list" ] (viewTodoList model.todoList)
-            , viewFooterActions (List.length model.todoList)
+            [ ul [ class "todo-list" ] (viewTodoList model.todoList model.visibility)
+            , viewFooterActions (List.length model.todoList) model.visibility
             , viewFooterInfo
             ]
         ]
 
 
-viewFooterActions : Int -> Html Msg
-viewFooterActions itemCount =
+viewFooterActions : Int -> String -> Html Msg
+viewFooterActions itemCount visibility =
     let
         textCount =
             String.fromInt itemCount
                 ++ (if itemCount /= 1 then
-                        " items left"
+                        " items"
 
                     else
-                        " item left"
+                        " item"
                    )
     in
     footer [ class "footer" ]
         [ span [ class "todo-count" ] [ strong [] [ text textCount ] ]
         , ul [ class "filters" ]
-            [ li [] [ a [ class "selected", href "#/" ] [ text "All" ] ]
-            , li [] [ a [ href "#/active" ] [ text "Active" ] ]
-            , li [] [ a [ href "#/completed" ] [ text "Completed" ] ]
+            [ filterButton visibility "" "All"
+            , filterButton visibility "active" "Active"
+            , filterButton visibility "completed" "Completed"
             ]
-        , button [ class "clear-completed" ] [ text "Clear completed" ]
+        , button [ class "clear-completed", onClick ClearCompleted ] [ text "Clear completed" ]
+        ]
+
+
+filterButton : String -> String -> String -> Html Msg
+filterButton visibility filter filterText =
+    li []
+        [ a
+            [ classList [ ( "selected", visibility == filter ) ], onClick (SetVisibility filter) ]
+            [ text filterText ]
         ]
 
 
@@ -171,15 +214,28 @@ viewFooterInfo =
         ]
 
 
-viewTodoList : TodoList -> List (Html Msg)
-viewTodoList todos =
-    List.map
-        (viewTodoItem
-            (\todo -> ToggleItem todo)
-            (\todo -> DeleteItem todo)
-            (\todo -> EditItem todo)
-        )
-        todos
+viewTodoList : TodoList -> String -> List (Html Msg)
+viewTodoList todos visibility =
+    let
+        todoFilter =
+            case visibility of
+                "active" ->
+                    \a -> not a.completed
+
+                "completed" ->
+                    \a -> a.completed
+
+                _ ->
+                    \_ -> True
+    in
+    todos
+        |> List.filter todoFilter
+        |> List.map
+            (viewTodoItem
+                (\todo -> ToggleItem todo)
+                (\todo -> DeleteItem todo)
+                (\todo -> EditItem todo)
+            )
 
 
 viewTodoItem : (TodoItem -> Msg) -> (TodoItem -> Msg) -> (TodoItem -> Msg) -> TodoItem -> Html Msg
