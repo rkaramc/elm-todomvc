@@ -51,4 +51,4 @@ todoItemDecoder =
     succeed TodoItem
         |> andMap (field "description" string)
         |> andMap (field "completed" bool)
-        |> andMap (field "editing" bool)
+        |> andMap (field "editing" bool |> withDefault False)

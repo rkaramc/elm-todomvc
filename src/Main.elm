@@ -4,13 +4,46 @@ import Browser
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (keyCode, on, onBlur, onClick, onDoubleClick, onInput)
-import Json.Decode as Decode
-import Model exposing (Model, TodoItem, TodoList, modelDecoder)
+import Json.Decode exposing (Value, andThen, decodeValue, fail, succeed)
+import Model exposing (Model, TodoItem, modelDecoder)
+import String.Case
 
 
-init : Decode.Value -> ( Model, Cmd Msg )
+
+---- PROGRAM ----
+
+
+main : Program Value Model Msg
+main =
+    Browser.document
+        { view = \model -> { title = "Elm • TodoMVC", body = [ view model ] }
+        , init = init
+        , update = updateWithStorage
+        , subscriptions = always Sub.none
+        }
+
+
+port setStorage : Model -> Cmd msg
+
+
+updateWithStorage : Msg -> Model -> ( Model, Cmd Msg )
+updateWithStorage msg model =
+    let
+        ( newModel, cmds ) =
+            update msg model
+    in
+    ( newModel
+    , Cmd.batch [ setStorage newModel, cmds ]
+    )
+
+
+
+---- MODEL ----
+
+
+init : Value -> ( Model, Cmd Msg )
 init flags =
-    case Decode.decodeValue modelDecoder flags of
+    case decodeValue modelDecoder flags of
         Err _ ->
             Debug.todo "unable to decode model from localstorage!"
 
@@ -21,14 +54,18 @@ init flags =
 type Msg
     = NoOp
     | ToggleMain
-    | ToggleItem TodoItem
-    | DeleteItem TodoItem
-    | EditItem TodoItem
-    | EditItemText TodoItem Bool String
+    | SetVisibility String
     | ChangeNewTodoText String
     | SubmitNewTodo
-    | SetVisibility String
+    | EditItem TodoItem
+    | EditItemText TodoItem Bool String
+    | ToggleItem TodoItem
+    | DeleteItem TodoItem
     | ClearCompleted
+
+
+
+---- UPDATE ----
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -71,22 +108,6 @@ update msg model =
             , Cmd.none
             )
 
-        ToggleItem todo ->
-            ( { model
-                | todoList =
-                    model.todoList
-                        |> List.map
-                            (\a ->
-                                if todo.description == a.description then
-                                    { todo | completed = not todo.completed }
-
-                                else
-                                    a
-                            )
-              }
-            , Cmd.none
-            )
-
         EditItem todo ->
             ( { model
                 | todoList =
@@ -110,7 +131,26 @@ update msg model =
                         |> List.map
                             (\a ->
                                 if todo.description == a.description then
-                                    { todo | description = desc, editing = continueEditing }
+                                    { todo
+                                        | description = desc
+                                        , editing = continueEditing
+                                    }
+
+                                else
+                                    a
+                            )
+              }
+            , Cmd.none
+            )
+
+        ToggleItem todo ->
+            ( { model
+                | todoList =
+                    model.todoList
+                        |> List.map
+                            (\a ->
+                                if todo.description == a.description then
+                                    { todo | completed = not todo.completed }
 
                                 else
                                     a
@@ -144,37 +184,35 @@ update msg model =
 
 view : Model -> Html Msg
 view model =
-    section [ class "todoapp" ]
-        [ header [ class "header " ]
-            [ h1 [] [ text "todos" ]
-            , input
-                [ class "new-todo"
-                , placeholder "What needs to be done?"
-                , autofocus True
-                , value model.newTodoText
-                , onInput ChangeNewTodoText
-                , onEnter SubmitNewTodo
+    div []
+        [ section [ class "todoapp" ]
+            [ header [ class "header " ]
+                [ h1 [] [ text "todos" ]
+                , input
+                    [ class "new-todo"
+                    , placeholder "What needs to be done?"
+                    , autofocus True
+                    , value model.newTodoText
+                    , onInput ChangeNewTodoText
+                    , onEnter SubmitNewTodo
+                    ]
+                    []
+                , input [ class "toggle-all", id "toggle-all", type_ "checkbox", onClick ToggleMain ] []
+                , label [ for "toggle-all" ] [ text "Toggle display of all Todos" ]
                 ]
-                []
-            , input [ class "toggle-all", id "toggle-all", type_ "checkbox", onClick ToggleMain ] []
-            , label [ for "toggle-all" ] [ text "Toggle display of all Todos" ]
+            , viewTodoList model
+            , viewFooterActions model
             ]
-        , section
-            [ classList
-                [ ( "main", True )
-                , ( "hidden", not model.displayMain )
-                ]
-            ]
-            [ ul [ class "todo-list" ] (viewTodoList model.todoList model.visibility)
-            , viewFooterActions (List.length model.todoList) model.visibility
-            , viewFooterInfo
-            ]
+        , viewFooterInfo
         ]
 
 
-viewFooterActions : Int -> String -> Html Msg
-viewFooterActions itemCount visibility =
+viewFooterActions : Model -> Html Msg
+viewFooterActions model =
     let
+        itemCount =
+            model.todoList |> List.length
+
         textCount =
             String.fromInt itemCount
                 ++ (if itemCount /= 1 then
@@ -183,42 +221,73 @@ viewFooterActions itemCount visibility =
                     else
                         " item"
                    )
+
+        completedItemCount =
+            model.todoList |> List.filter (\a -> a.completed) |> List.length
+
+        clearCompletedLink =
+            if completedItemCount > 0 then
+                [ button
+                    [ class "clear-completed"
+                    , onClick ClearCompleted
+                    ]
+                    [ text "Clear completed" ]
+                ]
+
+            else
+                []
+
+        filters =
+            [ "all", "active" ]
+                ++ (if completedItemCount > 0 then
+                        [ "completed" ]
+
+                    else
+                        []
+                   )
+
+        filterButton filter =
+            li []
+                [ a
+                    [ classList
+                        [ ( "selected", model.visibility == filter )
+                        ]
+                    , onClick (SetVisibility filter)
+                    ]
+                    [ text (filter |> toSentenceCase) ]
+                ]
     in
-    footer [ class "footer" ]
-        [ span [ class "todo-count" ] [ strong [] [ text textCount ] ]
-        , ul [ class "filters" ]
-            [ filterButton visibility "" "All"
-            , filterButton visibility "active" "Active"
-            , filterButton visibility "completed" "Completed"
-            ]
-        , button [ class "clear-completed", onClick ClearCompleted ] [ text "Clear completed" ]
-        ]
+    if itemCount > 0 then
+        footer [ class "footer" ]
+            ([ span
+                [ class "todo-count" ]
+                [ strong [] [ text textCount ] ]
+             , ul
+                [ class "filters" ]
+                (filters |> List.map filterButton)
+             ]
+                ++ clearCompletedLink
+            )
 
-
-filterButton : String -> String -> String -> Html Msg
-filterButton visibility filter filterText =
-    li []
-        [ a
-            [ classList [ ( "selected", visibility == filter ) ], onClick (SetVisibility filter) ]
-            [ text filterText ]
-        ]
+    else
+        span [] []
 
 
 viewFooterInfo : Html Msg
 viewFooterInfo =
     footer [ class "info" ]
         [ p [] [ text "Double-click to edit a todo" ]
-        , p [] [ text "Template by ", a [ href "http://sindresorhus.com" ] [ text "Sindre Sorhus" ] ]
-        , p [] [ text "Created by ", a [ href "http://karamch.com/about" ] [ text "Rajeev K" ] ]
-        , p [] [ text "Part of ", a [ href "http://todomvc.com" ] [ text "TodoMVC" ] ]
+        , p [] [ text "Template by ", a [ href "http://sindresorhus.com", target "_blank" ] [ text "Sindre Sorhus" ] ]
+        , p [] [ text "Created by ", a [ href "http://karamch.com/about", target "_blank" ] [ text "Rajeev K" ] ]
+        , p [] [ text "Part of ", a [ href "http://todomvc.com", target "_blank" ] [ text "TodoMVC" ] ]
         ]
 
 
-viewTodoList : TodoList -> String -> List (Html Msg)
-viewTodoList todos visibility =
+viewTodoList : Model -> Html Msg
+viewTodoList model =
     let
         todoFilter =
-            case visibility of
+            case model.visibility of
                 "active" ->
                     \a -> not a.completed
 
@@ -228,25 +297,26 @@ viewTodoList todos visibility =
                 _ ->
                     \_ -> True
     in
-    todos
-        |> List.filter todoFilter
-        |> List.map
-            (viewTodoItem
-                (\todo -> ToggleItem todo)
-                (\todo -> DeleteItem todo)
-                (\todo -> EditItem todo)
+    section
+        [ class "main"
+        , hidden (not model.displayMain)
+        ]
+        [ ul [ class "todo-list" ]
+            (model.todoList
+                |> List.filter todoFilter
+                |> List.map viewTodoItem
             )
+        ]
 
 
-viewTodoItem : (TodoItem -> Msg) -> (TodoItem -> Msg) -> (TodoItem -> Msg) -> TodoItem -> Html Msg
-viewTodoItem toggleItem deleteItem editItem todo =
+viewTodoItem : TodoItem -> Html Msg
+viewTodoItem todo =
     let
-        desc =
-            todo.description
-
+        -- desc =
+        --     todo.description
         handleDoubleClick =
             if not todo.editing then
-                editItem todo
+                EditItem todo
 
             else
                 NoOp
@@ -264,67 +334,44 @@ viewTodoItem toggleItem deleteItem editItem todo =
                 [ class "toggle"
                 , type_ "checkbox"
                 , checked todo.completed
-                , onClick (toggleItem todo)
+                , onClick (ToggleItem todo)
                 ]
                 []
             , label [] [ text todo.description ]
             , button
                 [ class "destroy"
-                , onClick (deleteItem todo)
+                , onClick (DeleteItem todo)
                 ]
                 []
             ]
         , input
             [ class "edit"
-            , value desc
+            , value todo.description
             , onInput (EditItemText todo True)
-            , onEnter (EditItemText todo False desc)
-            , onBlur (EditItemText todo False desc)
+            , onEnter (EditItemText todo False todo.description)
+            , onBlur (EditItemText todo False todo.description)
             ]
             []
         ]
 
 
 
----- PROGRAM ----
-
-
-main : Program Decode.Value Model Msg
-main =
-    Browser.document
-        { view = \model -> { title = "Elm • TodoMVC", body = [ view model ] }
-        , init = init
-        , update = updateWithStorage
-        , subscriptions = always Sub.none
-        }
-
-
-port setStorage : Model -> Cmd msg
-
-
-updateWithStorage : Msg -> Model -> ( Model, Cmd Msg )
-updateWithStorage msg model =
-    let
-        ( newModel, cmds ) =
-            update msg model
-    in
-    ( newModel
-    , Cmd.batch [ setStorage newModel, cmds ]
-    )
-
-
-
 ---- UTILITIES ----
 
 
-onEnter : Msg -> Attribute Msg
+onEnter : msg -> Attribute msg
 onEnter msg =
     let
         isEnter code =
             if code == 13 then
-                Decode.succeed msg
+                succeed msg
 
             else
-                Decode.fail "not ENTER"
+                fail "not ENTER"
     in
-    on "keydown" (Decode.andThen isEnter keyCode)
+    on "keydown" (andThen isEnter keyCode)
+
+
+toSentenceCase : String -> String
+toSentenceCase =
+    String.Case.convertCase " " True False
